@@ -13,6 +13,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using corel = Corel.Interop.VGCore;
+using System.Reflection;
 
 namespace Latex4CorelDraw
 {
@@ -35,7 +36,7 @@ namespace Latex4CorelDraw
             this.corelApp = app;
             m_current = this;
             InitializeComponent();
-
+            AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
             AddinUtilities.initFonts();
             AddinUtilities.copyLatexTemplate("LatexTemplate.txt", Properties.Resources.LatexTemplate);
 
@@ -102,6 +103,48 @@ namespace Latex4CorelDraw
         {
             string template = "\\begin{eqnarray*}\r\n\t<Enter latex code>\r\n\\end{eqnarray*}\r\n";
             createLatexObject(template, "Create latex equation array");
+        }
+        private Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
+        {
+            if (args.RequestingAssembly != null)
+                return args.RequestingAssembly;
+            Assembly asm = null;
+            string name = args.Name;
+            if (name.Contains(".resources"))
+                name = name.Replace(".resources", "");
+            asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(r => string.Equals(r.FullName.Split(',')[0], name.Split(',')[0]));
+            if (args.Name.Contains(".resources"))
+                asm = LoadResourceAssembly(asm);
+            if (asm == null)
+                asm = Assembly.LoadFrom(Name);
+            return asm;
+        }
+        private Assembly LoadResourceAssembly(Assembly executingAsm)
+        {
+            if (executingAsm == null)
+                return executingAsm;
+            string[] resourcesName = executingAsm.GetManifestResourceNames();
+            string resourceName = string.Empty;
+            for (int i = 0; i < resourcesName.Length; i++)
+            {
+                if (!resourcesName[i].Contains(".g."))
+                {
+                    resourceName = resourcesName[i];
+                    break;
+                }
+            }
+            if (string.IsNullOrEmpty(resourceName))
+                return executingAsm;
+            using (var stream = executingAsm.GetManifestResourceStream(resourceName))
+            {
+                if (stream != null)
+                {
+                    byte[] assemblyData = new byte[stream.Length];
+                    stream.Read(assemblyData, 0, assemblyData.Length);
+                    return Assembly.Load(assemblyData);
+                }
+            }
+            return executingAsm;
         }
     }
 }
